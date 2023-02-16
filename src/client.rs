@@ -15,6 +15,52 @@ pub struct Client {
     pub url_bldr: UrlBuilder,
 }
 
+#[derive(Debug, Clone)]
+pub enum ApiResponse<T> {
+    Response(T),
+    RateLimitReached,
+}
+
+impl<T> ApiResponse<T> {
+    /// Returns `true` if the api response is [`Response`].
+    ///
+    /// [`Response`]: ApiResponse::Response
+    #[must_use]
+    pub fn is_response(&self) -> bool {
+        matches!(self, Self::Response(..))
+    }
+
+    /// Returns a reference to the inner response value, if the api response is [`Response`].
+    ///
+    /// [`Response`]: ApiResponse::Response
+    pub fn as_response(&self) -> Option<&T> {
+        if let Self::Response(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    /// Returns the inner response value, if the api response is [`Response`].
+    ///
+    /// [`Response`]: ApiResponse::Response
+    pub fn try_into_response(self) -> Result<T, Self> {
+        if let Self::Response(v) = self {
+            Ok(v)
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Returns `true` if the api response is [`RateLimitReached`].
+    ///
+    /// [`RateLimitReached`]: ApiResponse::RateLimitReached
+    #[must_use]
+    pub fn is_rate_limit_reached(&self) -> bool {
+        matches!(self, Self::RateLimitReached)
+    }
+}
+
 impl Client {
     /// Create default Finnhub Client
     pub fn new(api_key: String) -> Self {
@@ -31,7 +77,10 @@ impl Client {
 
     /// Lookups a symbol in the Finnhub API
     /// https://finnhub.io/docs/api/symbol-search
-    pub async fn symbol_lookup(&self, query: String) -> Result<(SymbolLookup, Url), ExitFailure> {
+    pub async fn symbol_lookup(
+        &self,
+        query: String,
+    ) -> Result<(ApiResponse<SymbolLookup>, Url), ExitFailure> {
         self.get::<SymbolLookup>("search", &mut vec![("q", query)])
             .await
     }
@@ -44,7 +93,7 @@ impl Client {
         mic: Option<String>,
         security_type: Option<String>,
         currency: Option<String>,
-    ) -> Result<(Vec<StockSymbol>, Url), ExitFailure> {
+    ) -> Result<(ApiResponse<Vec<StockSymbol>>, Url), ExitFailure> {
         let mut params = vec![("exchange", exchange)];
         Client::maybe_add(&mut params, "mic", mic);
         Client::maybe_add(&mut params, "security_type", security_type);
@@ -59,7 +108,7 @@ impl Client {
         &self,
         key: ProfileToParam,
         value: String,
-    ) -> Result<(CompanyProfile, Url), ExitFailure> {
+    ) -> Result<(ApiResponse<CompanyProfile>, Url), ExitFailure> {
         let key = key.to_string();
         self.get::<CompanyProfile>("stock/profile2", &mut vec![(&key, value)])
             .await
@@ -71,7 +120,7 @@ impl Client {
         &self,
         category: MarketNewsCategory,
         min_id: Option<u64>,
-    ) -> Result<(Vec<MarketNews>, Url), ExitFailure> {
+    ) -> Result<(ApiResponse<Vec<MarketNews>>, Url), ExitFailure> {
         let mut params = vec![("category", category.to_string())];
         Client::maybe_add(&mut params, "minId", min_id);
         self.get::<Vec<MarketNews>>("news", &mut params).await
@@ -84,7 +133,7 @@ impl Client {
         symbol: String,
         from: String,
         to: String,
-    ) -> Result<(Vec<CompanyNews>, Url), ExitFailure> {
+    ) -> Result<(ApiResponse<Vec<CompanyNews>>, Url), ExitFailure> {
         self.get::<Vec<CompanyNews>>(
             "company-news",
             &mut vec![("symbol", symbol), ("from", from), ("to", to)],
@@ -97,21 +146,27 @@ impl Client {
     pub async fn news_sentiment(
         &self,
         symbol: String,
-    ) -> Result<(NewsSentiment, Url), ExitFailure> {
+    ) -> Result<(ApiResponse<NewsSentiment>, Url), ExitFailure> {
         self.get::<NewsSentiment>("news-sentiment", &mut vec![("symbol", symbol)])
             .await
     }
 
     /// Returns the specified companies peers.
     /// https://finnhub.io/docs/api/company-peers
-    pub async fn peers(&self, symbol: String) -> Result<(Vec<String>, Url), ExitFailure> {
+    pub async fn peers(
+        &self,
+        symbol: String,
+    ) -> Result<(ApiResponse<Vec<String>>, Url), ExitFailure> {
         self.get::<Vec<String>>("stock/peers", &mut vec![("symbol", symbol)])
             .await
     }
 
     /// Returns the specified company's current stock quote.
     /// https://finnhub.io/docs/api/quote
-    pub async fn quote(&self, symbol: String) -> Result<(CompanyQuote, Url), ExitFailure> {
+    pub async fn quote(
+        &self,
+        symbol: String,
+    ) -> Result<(ApiResponse<CompanyQuote>, Url), ExitFailure> {
         self.get::<CompanyQuote>("quote", &mut vec![("symbol", symbol)])
             .await
     }
@@ -121,7 +176,7 @@ impl Client {
     pub async fn basic_financials(
         &self,
         symbol: String,
-    ) -> Result<(BasicFinancials, Url), ExitFailure> {
+    ) -> Result<(ApiResponse<BasicFinancials>, Url), ExitFailure> {
         self.get::<BasicFinancials>(
             "stock/metric",
             &mut vec![("symbol", symbol), ("metric", "all".into())],
@@ -130,13 +185,16 @@ impl Client {
     }
 
     /// Returns the rates for all Forex pairs. Ideal for currency conversion
-    pub async fn forex_rates(&self, base: String) -> Result<(ForexRates, Url), ExitFailure> {
+    pub async fn forex_rates(
+        &self,
+        base: String,
+    ) -> Result<(ApiResponse<ForexRates>, Url), ExitFailure> {
         self.get::<ForexRates>("forex/rates", &mut vec![("base", base)])
             .await
     }
 
     /// Returns a list of supported Forex exchanges
-    pub async fn forex_exchanges(&self) -> Result<(Vec<String>, Url), ExitFailure> {
+    pub async fn forex_exchanges(&self) -> Result<(ApiResponse<Vec<String>>, Url), ExitFailure> {
         self.get::<Vec<String>>("forex/exchange", &mut vec![]).await
     }
 
@@ -144,7 +202,7 @@ impl Client {
     pub async fn forex_symbol(
         &self,
         exchange: String,
-    ) -> Result<(Vec<ForexSymbol>, Url), ExitFailure> {
+    ) -> Result<(ApiResponse<Vec<ForexSymbol>>, Url), ExitFailure> {
         self.get::<Vec<ForexSymbol>>("forex/symbol", &mut vec![("exchange", exchange)])
             .await
     }
@@ -156,7 +214,7 @@ impl Client {
         from: i64,
         to: i64,
         resolution: Resolution,
-    ) -> Result<(Candle, Url), ExitFailure> {
+    ) -> Result<(ApiResponse<Candle>, Url), ExitFailure> {
         self.get::<Candle>(
             "stock/candle",
             &mut vec![
@@ -174,7 +232,7 @@ impl Client {
         &self,
         endpoint: &str,
         params: &mut Vec<(&str, String)>,
-    ) -> Result<(T, Url), ExitFailure> {
+    ) -> Result<(ApiResponse<T>, Url), ExitFailure> {
         params.push(("token", self.api_key.clone()));
         let url_str = self.url_bldr.url(endpoint, params);
         let url = Url::parse(&url_str)?;
@@ -194,12 +252,16 @@ impl Client {
 
             clean_key_from_file(replay_file, self.api_key.clone());
 
-            Ok((deserialized, url))
+            Ok((ApiResponse::Response(deserialized), url))
         }
         #[cfg(not(test))]
         {
-            let res = reqwest::get(url.clone()).await?.json::<T>().await?;
-            Ok((res, url))
+            let res = reqwest::get(url.clone()).await?;
+            if res.status() == 429 {
+                return Ok((ApiResponse::RateLimitReached, url));
+            }
+            let res = res.json::<T>().await?;
+            Ok((ApiResponse::Response(res), url))
         }
     }
 

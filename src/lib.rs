@@ -49,6 +49,7 @@ mod test {
             let test_api_key = get_dummy_api_key();
             let client = Client::new(test_api_key);
             let (obj, url) = $api_fn(client.clone()).await.unwrap();
+            let obj = obj.try_into_response().unwrap();
 
             let expected_filename = client.url_bldr.expected_filename(url.to_string());
             let expected = load_expected_from_replay_filename(expected_filename);

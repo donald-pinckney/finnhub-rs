@@ -36,7 +36,7 @@ pub fn clean_key_from_file(filename: String, key: String) {
 
     // Rewrite file.
     let mut dst = std::fs::File::create(filename).unwrap();
-    dst.write(new_data.as_bytes()).unwrap();
+    dst.write_all(new_data.as_bytes()).unwrap();
 }
 
 /// Replace the file extension of a replay file with that of an expected. Not very robust.
